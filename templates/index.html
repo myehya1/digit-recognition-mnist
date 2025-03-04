@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MNIST Digit Predictor</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <h1>MNIST Digit Predictor</h1>
+    <p>Draw a digit (0-9) in the box below:</p>
+    <canvas id="canvas" width="280" height="280" style="border: 1px solid black;"></canvas>
+    <br>
+    <button onclick="clearCanvas()">Clear</button>
+    <button onclick="predictDigit()">Predict</button>
+    <h2 id="prediction-text">Prediction: </h2>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        let isDrawing = false;
+
+        canvas.addEventListener('mousedown', (event) => {
+            isDrawing = true;
+            ctx.beginPath();
+            ctx.moveTo(event.offsetX, event.offsetY);
+        });
+        canvas.addEventListener('mouseup', () => isDrawing = false);
+        canvas.addEventListener('mousemove', draw);
+
+        function draw(event) {
+            if (!isDrawing) return;
+            ctx.lineWidth = 10;
+            ctx.lineCap = 'round';
+            ctx.strokeStyle = 'black';
+            ctx.lineTo(event.offsetX, event.offsetY);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(event.offsetX, event.offsetY);
+        }
+
+        function clearCanvas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.beginPath(); // Reset the drawing path
+            document.getElementById('prediction-text').innerText = 'Prediction: ';
+        }
+
+        async function predictDigit() {
+            // Create a temporary canvas to invert colors
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = 280;
+            tempCanvas.height = 280;
+            const tempCtx = tempCanvas.getContext('2d');
+
+            // Fill with white background
+            tempCtx.fillStyle = 'white';
+            tempCtx.fillRect(0, 0, 280, 280);
+
+            // Draw the original canvas (black drawing) onto the temporary canvas
+            tempCtx.drawImage(canvas, 0, 0);
+
+            // Invert colors (black -> white, white -> black)
+            const imageData = tempCtx.getImageData(0, 0, 280, 280);
+            const data = imageData.data;
+            for (let i = 0; i < data.length; i += 4) {
+                data[i] = 255 - data[i];         // Red
+                data[i + 1] = 255 - data[i + 1]; // Green
+                data[i + 2] = 255 - data[i + 2]; // Blue
+            }
+            tempCtx.putImageData(imageData, 0, 0);
+
+            // Convert to image and send to the server
+            const image = tempCanvas.toDataURL('image/png');
+            const blob = await fetch(image).then(res => res.blob());
+
+            const formData = new FormData();
+            formData.append('file', blob, 'digit.png');
+
+            const response = await fetch('/predict', {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+            document.getElementById('prediction-text').innerText = `Prediction: ${result.prediction}`;
+        }
+    </script>
+</body>
+</html>
